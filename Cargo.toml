@@ -1,0 +1,23 @@
+[package]
+name = "kadraj"
+version = "0.1.0"
+edition = "2024"
+description = "The HTML-aware image optimizer: derives responsive AVIF variants for the images your built site actually uses and rewrites the markup to serve them."
+license = "MIT"
+repository = "https://github.com/productdevbook/kadraj"
+keywords = ["avif", "image", "optimization", "html", "srcset"]
+categories = ["command-line-utilities", "multimedia::images", "web-programming"]
+
+[profile.release]
+lto = true
+
+[dependencies]
+anyhow = "1.0.104"
+fast_image_resize = "6.1.0"
+image = "0.25.10"
+lol_html = "3.0.1"
+ravif = "0.13.0"
+rayon = "1.12.0"
+rgb = "0.8.53"
+walkdir = "2.5.0"
+xxhash-rust = { version = "0.8.18", features = ["xxh3"] }

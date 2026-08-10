@@ -1,0 +1,19 @@
+{
+  "name": "vite-plugin-kadraj",
+  "version": "0.1.0",
+  "description": "Run kadraj, the HTML-aware image optimizer, on your Vite build output.",
+  "type": "module",
+  "main": "index.mjs",
+  "exports": "./index.mjs",
+  "files": ["index.mjs"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/productdevbook/kadraj.git",
+    "directory": "packages/vite-plugin-kadraj"
+  },
+  "keywords": ["vite-plugin", "avif", "image-optimization", "kadraj"],
+  "peerDependencies": {
+    "vite": ">=5"
+  }
+}

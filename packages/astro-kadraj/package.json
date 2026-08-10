@@ -1,0 +1,19 @@
+{
+  "name": "astro-kadraj",
+  "version": "0.1.0",
+  "description": "Run kadraj, the HTML-aware image optimizer, on your Astro build output.",
+  "type": "module",
+  "main": "index.mjs",
+  "exports": "./index.mjs",
+  "files": ["index.mjs"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/productdevbook/kadraj.git",
+    "directory": "packages/astro-kadraj"
+  },
+  "keywords": ["astro-integration", "withastro", "avif", "image-optimization", "kadraj"],
+  "peerDependencies": {
+    "astro": ">=4"
+  }
+}
