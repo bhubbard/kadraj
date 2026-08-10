@@ -43,13 +43,14 @@ cargo build --release   # needs nasm for rav1e's assembly
 ## Usage
 
 ```sh
-kadraj <dist-dir> [--quality 50] [--widths 400,800,1200,1600]
+kadraj <dist-dir> [--quality 50] [--widths 400,800,1200,1600] [--cache .kadraj-cache]
 ```
 
 | Flag | Default | Meaning |
 |---|---|---|
 | `--quality` | `50` | AVIF quality, 1–100 |
 | `--widths` | `400,800,1200,1600` | derivative widths; the largest also caps oversized sources |
+| `--cache` | off | a directory that outlives the build. Build tools wipe their output on every run; with a cache, an unchanged image costs a file copy instead of an encode |
 
 Derivative files land next to their sources, named
 `photo.<hash>.<width>w.avif`. The hash covers the source bytes: unchanged

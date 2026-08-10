@@ -17,6 +17,11 @@ struct Options {
     root: PathBuf,
     widths: Vec<u32>,
     quality: f32,
+    /// Survives between builds. Build tools wipe their output directory on
+    /// every run, which would throw the derivatives away and make every
+    /// publish re-encode the world; a cache outside the output keeps an
+    /// unchanged image an unchanged file copy.
+    cache: Option<PathBuf>,
 }
 
 struct Derived {
@@ -30,10 +35,12 @@ fn parse_args() -> Result<Options> {
     let mut root = None;
     let mut widths = vec![400, 800, 1200, 1600];
     let mut quality = 50.0;
+    let mut cache = None;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--quality" => quality = args.next().context("--quality needs a number")?.parse()?,
+            "--cache" => cache = Some(PathBuf::from(args.next().context("--cache needs a path")?)),
             "--widths" => {
                 widths = args
                     .next()
@@ -45,9 +52,10 @@ fn parse_args() -> Result<Options> {
             }
             "--help" | "-h" => {
                 println!(
-                    "kadraj <dist-dir> [--quality 50] [--widths 400,800,1200,1600]\n\
+                    "kadraj <dist-dir> [--quality 50] [--widths 400,800,1200,1600] [--cache <dir>]\n\
                      Derives responsive AVIF variants for the images your built\n\
-                     HTML uses and rewrites the markup to serve them."
+                     HTML uses and rewrites the markup to serve them. --cache\n\
+                     keeps derivatives across builds whose output is wiped."
                 );
                 std::process::exit(0);
             }
@@ -55,10 +63,14 @@ fn parse_args() -> Result<Options> {
             other => anyhow::bail!("unknown argument: {other}"),
         }
     }
+    if let Some(dir) = &cache {
+        std::fs::create_dir_all(dir).context("could not create the cache directory")?;
+    }
     Ok(Options {
         root: root.context("usage: kadraj <dist-dir>")?.canonicalize()?,
         widths,
         quality,
+        cache,
     })
 }
 
@@ -191,17 +203,28 @@ fn derive(src: &Path, opt: &Options, encoded: &AtomicU64) -> Result<Derived> {
         let th = (u64::from(h) * u64::from(tw) / u64::from(w)).max(1) as u32;
         let out = src.with_file_name(format!("{stem}.{hash:08x}.{tw}w.avif"));
         if !out.exists() {
-            let resized = resize(&rgba, w, h, tw, th)?;
-            let avif = ravif::Encoder::new()
-                .with_quality(opt.quality)
-                .with_speed(4)
-                .encode_rgba(ravif::Img::new(
-                    rgb::FromSlice::as_rgba(resized.as_slice()),
-                    tw as usize,
-                    th as usize,
-                ))?;
-            std::fs::write(&out, avif.avif_file)?;
-            encoded.fetch_add(1, Ordering::Relaxed);
+            let cached = opt
+                .cache
+                .as_ref()
+                .map(|dir| dir.join(format!("{hash:016x}.{tw}w.q{}.avif", opt.quality)));
+            if let Some(hit) = cached.as_ref().filter(|c| c.is_file()) {
+                std::fs::copy(hit, &out)?;
+            } else {
+                let resized = resize(&rgba, w, h, tw, th)?;
+                let avif = ravif::Encoder::new()
+                    .with_quality(opt.quality)
+                    .with_speed(4)
+                    .encode_rgba(ravif::Img::new(
+                        rgb::FromSlice::as_rgba(resized.as_slice()),
+                        tw as usize,
+                        th as usize,
+                    ))?;
+                std::fs::write(&out, avif.avif_file)?;
+                encoded.fetch_add(1, Ordering::Relaxed);
+                if let Some(keep) = cached {
+                    std::fs::copy(&out, keep).ok();
+                }
+            }
         }
         let site = format!("/{}", out.strip_prefix(&opt.root)?.to_string_lossy());
         sources.push((site, tw));
@@ -321,6 +344,7 @@ mod tests {
             root: root.clone(),
             widths: vec![400, 800],
             quality: 50.0,
+            cache: None,
         };
         let wanted = collect_imgs(&root.join("index.html"), &root).unwrap();
         assert_eq!(wanted.len(), 1, "the picture-fed img must not be collected");
@@ -340,5 +364,43 @@ mod tests {
         // The already-arranged picture stayed untouched: still exactly one
         // avif source added.
         assert_eq!(html.matches("image/avif").count(), 1);
+    }
+
+    #[test]
+    fn the_cache_survives_a_wiped_output() {
+        let dir = std::env::temp_dir().join("kadraj-test-cache");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("img")).unwrap();
+        let px = image::RgbaImage::from_pixel(600, 400, image::Rgba([10, 200, 90, 255]));
+        px.save(dir.join("img/a.png")).unwrap();
+
+        let root = dir.canonicalize().unwrap();
+        let opt = Options {
+            root: root.clone(),
+            widths: vec![400],
+            quality: 50.0,
+            cache: Some(root.join("cache")),
+        };
+        std::fs::create_dir_all(root.join("cache")).unwrap();
+        let src = root.join("img/a.png");
+
+        let n = AtomicU64::new(0);
+        derive(&src, &opt, &n).unwrap();
+        assert_eq!(n.load(Ordering::Relaxed), 1); // one 400w — the only configured width
+
+        // The build tool wipes its output; the derivatives vanish with it.
+        for e in std::fs::read_dir(root.join("img")).unwrap() {
+            let p = e.unwrap().path();
+            if p.extension().is_some_and(|x| x == "avif") {
+                std::fs::remove_file(p).unwrap();
+            }
+        }
+
+        derive(&src, &opt, &n).unwrap();
+        assert_eq!(
+            n.load(Ordering::Relaxed),
+            1,
+            "the second build must copy, not encode"
+        );
     }
 }
