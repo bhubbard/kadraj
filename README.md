@@ -51,11 +51,43 @@ kadraj <dist-dir> [--quality 50] [--widths 400,800,1200,1600] [--cache .kadraj-c
 | `--quality` | `50` | AVIF quality, 1–100 |
 | `--widths` | `400,800,1200,1600` | derivative widths; the largest also caps oversized sources |
 | `--cache` | off | a directory that outlives the build. Build tools wipe their output on every run; with a cache, an unchanged image costs a file copy instead of an encode |
+| `--og-manifest <file>` | off | writes, as JSON, what each page would need on a sharing card: title, description, site name, and the page's own biggest image |
+| `--og-write` | off | also gives that image to pages naming none (`og:image`, `twitter:image`); needs `--site-url` |
+| `--site-url <url>` | — | the site's address, because a sharing image must be absolute |
 
 Derivative files land next to their sources, named
 `photo.<hash>.<width>w.avif`. The hash covers the source bytes: unchanged
 images are never re-encoded, changed images get new names — so derivatives
 can be served with `Cache-Control: immutable`.
+
+## Sharing cards
+
+Social crawlers do not run scripts: they read four things out of the HTML
+and give up. `--og-manifest` collects exactly those, for every page:
+
+```json
+[
+  { "path": "/blog/kraft-bags/", "title": "Kraft bags — sizes and printing",
+    "description": "How to choose…", "site": "MRT",
+    "has_og_image": false,
+    "image": { "src": "/img/bags.jpg", "width": 1600, "height": 1000, "remote": false } }
+]
+```
+
+Two things it will not get wrong. The picture is the **biggest** one, not
+the first — the first is usually a logo, and a logo shared as a photograph
+tells a reader nothing. And a picture that appears on most of the site's
+pages is the template's, not the page's: payment strips, author portraits
+and mastheads are dropped, as is anything inside `<header>`, `<footer>`,
+`<nav>` or `<aside>`.
+
+Images served from somewhere else — a CDN, a bucket — are offered as they
+are, with `remote: true` and no size. Measuring them would mean fetching
+them, and a build that downloads the web fails when the web is slow.
+
+With `--og-write` kadraj fills the tags itself for pages that name none. A
+CMS that knows more (a cover image, a product price, a brand template) can
+read the manifest instead and decide for itself.
 
 ## Vite and Astro plugins
 

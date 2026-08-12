@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+mod og;
+
 use anyhow::{Context, Result};
 use fast_image_resize::images::Image;
 use fast_image_resize::{PixelType, Resizer};
@@ -22,6 +24,16 @@ struct Options {
     /// publish re-encode the world; a cache outside the output keeps an
     /// unchanged image an unchanged file copy.
     cache: Option<PathBuf>,
+    /// Where to write what a sharing card would need, per page. Nothing is
+    /// rendered here: kadraj knows what a page shows, not what a brand's
+    /// card should look like.
+    og_manifest: Option<PathBuf>,
+    /// Whether to give a page the sharing image the manifest found for it.
+    /// Off by default: a CMS usually knows better than the page does.
+    og_write: bool,
+    /// The site's own address, needed because a sharing image must be an
+    /// absolute URL — crawlers do not resolve relative ones.
+    site_url: Option<String>,
 }
 
 struct Derived {
@@ -36,11 +48,28 @@ fn parse_args() -> Result<Options> {
     let mut widths = vec![400, 800, 1200, 1600];
     let mut quality = 50.0;
     let mut cache = None;
+    let mut og_manifest = None;
+    let mut og_write = false;
+    let mut site_url = None;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--quality" => quality = args.next().context("--quality needs a number")?.parse()?,
             "--cache" => cache = Some(PathBuf::from(args.next().context("--cache needs a path")?)),
+            "--og-write" => og_write = true,
+            "--site-url" => {
+                site_url = Some(
+                    args.next()
+                        .context("--site-url needs an address like https://example.com")?
+                        .trim_end_matches('/')
+                        .to_string(),
+                )
+            }
+            "--og-manifest" => {
+                og_manifest = Some(PathBuf::from(
+                    args.next().context("--og-manifest needs a path")?,
+                ))
+            }
             "--widths" => {
                 widths = args
                     .next()
@@ -55,7 +84,11 @@ fn parse_args() -> Result<Options> {
                     "kadraj <dist-dir> [--quality 50] [--widths 400,800,1200,1600] [--cache <dir>]\n\
                      Derives responsive AVIF variants for the images your built\n\
                      HTML uses and rewrites the markup to serve them. --cache\n\
-                     keeps derivatives across builds whose output is wiped."
+                     keeps derivatives across builds whose output is wiped.\n\
+                     --og-manifest writes, as json, what each page would need\n\
+                     on a sharing card: its title, description and biggest image.\n\
+                     --og-write --site-url <url> also gives that image to the\n\
+                     pages that name none of their own."
                 );
                 std::process::exit(0);
             }
@@ -71,6 +104,9 @@ fn parse_args() -> Result<Options> {
         widths,
         quality,
         cache,
+        og_manifest,
+        og_write,
+        site_url,
     })
 }
 
@@ -119,6 +155,22 @@ fn main() -> Result<()> {
         })
         .sum();
 
+    if opt.og_manifest.is_some() || opt.og_write {
+        match write_cards(&htmls, &opt, &derived) {
+            Ok(cards) => {
+                if let Some(path) = &opt.og_manifest {
+                    std::fs::write(path, serde_json::to_string_pretty(&cards)?)?;
+                }
+                println!("{} pages described for sharing", cards.len());
+                if opt.og_write {
+                    let given = give_sharing_images(&cards, &opt)?;
+                    println!("{given} pages given a sharing image");
+                }
+            }
+            Err(e) => eprintln!("the sharing manifest was not written: {e}"),
+        }
+    }
+
     println!(
         "{} images, {} encodes, {} pages rewritten",
         derived.len(),
@@ -126,6 +178,127 @@ fn main() -> Result<()> {
         rewritten,
     );
     Ok(())
+}
+
+/// What every page would need on a sharing card, in the order the pages
+/// were found — shallow first, so a truncated list keeps the front pages.
+fn write_cards(
+    htmls: &[PathBuf],
+    opt: &Options,
+    derived: &HashMap<PathBuf, Derived>,
+) -> Result<Vec<og::Card>> {
+    // First read every page, then decide. A picture that appears on most
+    // pages of a site is the template's — a logo, a payment strip, an
+    // author portrait — and it is nobody's sharing card.
+    let mut read: Vec<(PathBuf, og::Card)> = htmls
+        .par_iter()
+        .filter_map(|page| {
+            let html = std::fs::read_to_string(page).ok()?;
+            Some((page.clone(), og::read(&html)))
+        })
+        .collect();
+
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    for (_, card) in &read {
+        for src in card.candidates() {
+            *seen.entry(src).or_default() += 1;
+        }
+    }
+    let everywhere: std::collections::HashSet<String> = if read.len() >= 8 {
+        let most = read.len() / 3;
+        seen.into_iter()
+            .filter(|(_, count)| *count > most)
+            .map(|(src, _)| src)
+            .collect()
+    } else {
+        std::collections::HashSet::new()
+    };
+
+    let mut cards: Vec<og::Card> = read
+        .par_iter_mut()
+        .filter_map(|(page, card)| {
+            // The sizes are already known from the derivative pass; only an
+            // image nobody derived costs a read here.
+            card.choose(page, &opt.root, &everywhere, |file| {
+                derived
+                    .get(file)
+                    .map(|d| (d.width, d.height))
+                    .or_else(|| image::image_dimensions(file).ok())
+            });
+            card.path = url_path(page.strip_prefix(&opt.root).ok()?);
+            Some(card.clone())
+        })
+        .collect();
+    cards.sort_by(|a, b| {
+        (a.path.matches('/').count(), &a.path).cmp(&(b.path.matches('/').count(), &b.path))
+    });
+    Ok(cards)
+}
+
+/// Writes og:image (and twitter:image) into the pages that named none.
+///
+/// Only where the manifest found something: a page with no picture worth
+/// sharing is left as it is, for a CMS or a card renderer to answer.
+fn give_sharing_images(cards: &[og::Card], opt: &Options) -> Result<usize> {
+    let Some(site) = &opt.site_url else {
+        eprintln!("--og-write needs --site-url; nothing written");
+        return Ok(0);
+    };
+    let done: usize = cards
+        .par_iter()
+        .filter(|card| !card.has_og_image && card.image.is_some())
+        .filter_map(|card| {
+            let image = card.image.as_ref()?;
+            let absolute = if image.remote {
+                image.src.clone()
+            } else {
+                format!("{site}{}", image.src)
+            };
+            let file = page_file(&card.path, &opt.root);
+            let html = std::fs::read_to_string(&file).ok()?;
+            let at = html.find("</head>")?;
+            let tags = format!(
+                "<meta property=\"og:image\" content=\"{0}\">\
+                 <meta name=\"twitter:image\" content=\"{0}\">\
+                 <meta name=\"twitter:card\" content=\"summary_large_image\">",
+                escape(&absolute)
+            );
+            let mut page = String::with_capacity(html.len() + tags.len());
+            page.push_str(&html[..at]);
+            page.push_str(&tags);
+            page.push_str(&html[at..]);
+            std::fs::write(&file, page).ok()?;
+            Some(1)
+        })
+        .sum();
+    Ok(done)
+}
+
+fn escape(url: &str) -> String {
+    url.replace('&', "&amp;").replace('"', "&quot;")
+}
+
+/// The file behind a page's address — `url_path` in reverse.
+fn page_file(path: &str, root: &Path) -> PathBuf {
+    if path == "/" {
+        root.join("index.html")
+    } else if let Some(dir) = path.strip_suffix('/') {
+        root.join(dir.trim_start_matches('/')).join("index.html")
+    } else {
+        root.join(format!("{}.html", path.trim_start_matches('/')))
+    }
+}
+
+/// `blog/index.html` is the page at `/blog/`; `about.html` is `/about`.
+fn url_path(relative: &Path) -> String {
+    let file = relative.to_string_lossy().replace('\\', "/");
+    if file == "index.html" {
+        "/".to_string()
+    } else if let Some(dir) = file.strip_suffix("/index.html") {
+        format!("/{dir}/")
+    } else {
+        format!("/{}", file.strip_suffix(".html").unwrap_or(&file))
+    }
 }
 
 fn is_raster(p: &Path) -> bool {
@@ -139,7 +312,7 @@ fn is_raster(p: &Path) -> bool {
 
 /// Turns a page's src into a file on disk; anything outside the site root,
 /// remote, or non-raster resolves to nothing.
-fn resolve(src: &str, page: &Path, root: &Path) -> Option<PathBuf> {
+pub(crate) fn resolve(src: &str, page: &Path, root: &Path) -> Option<PathBuf> {
     if src.contains("://") || src.starts_with("data:") || src.starts_with("//") {
         return None;
     }
@@ -345,6 +518,9 @@ mod tests {
             widths: vec![400, 800],
             quality: 50.0,
             cache: None,
+            og_manifest: None,
+            og_write: false,
+            site_url: None,
         };
         let wanted = collect_imgs(&root.join("index.html"), &root).unwrap();
         assert_eq!(wanted.len(), 1, "the picture-fed img must not be collected");
@@ -367,6 +543,15 @@ mod tests {
     }
 
     #[test]
+    fn an_address_and_its_file_agree_both_ways() {
+        let root = std::path::Path::new("/site");
+        for file in ["index.html", "about.html", "blog/index.html"] {
+            let path = url_path(std::path::Path::new(file));
+            assert_eq!(page_file(&path, root), root.join(file), "{path}");
+        }
+    }
+
+    #[test]
     fn the_cache_survives_a_wiped_output() {
         let dir = std::env::temp_dir().join("kadraj-test-cache");
         let _ = std::fs::remove_dir_all(&dir);
@@ -380,6 +565,9 @@ mod tests {
             widths: vec![400],
             quality: 50.0,
             cache: Some(root.join("cache")),
+            og_manifest: None,
+            og_write: false,
+            site_url: None,
         };
         std::fs::create_dir_all(root.join("cache")).unwrap();
         let src = root.join("img/a.png");
