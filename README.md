@@ -74,6 +74,11 @@ and give up. `--og-manifest` collects exactly those, for every page:
 ]
 ```
 
+It also carries through what the page already says for machines: `og:type`,
+and any `application/ld+json` verbatim. That is where a developer writes a
+product's price, an article's author, an event's date — a better source
+than anything guessed from the prose, and the right place to write it.
+
 Two things it will not get wrong. The picture is the **biggest** one, not
 the first — the first is usually a logo, and a logo shared as a photograph
 tells a reader nothing. And a picture that appears on most of the site's

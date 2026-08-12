@@ -32,6 +32,18 @@ pub struct Card {
     /// The biggest image the page uses, when it uses one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image: Option<CardImage>,
+    /// What the page says it is: article, product, website. From og:type.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub kind: String,
+    /// The page's structured data, verbatim, when it carries any.
+    ///
+    /// This is where a developer already writes what a machine should know
+    /// — a product's price, an article's author, an event's date — and it
+    /// is a better source than anything guessed from the prose. Carried
+    /// through untouched so whoever renders a card can read the fields it
+    /// cares about.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub structured: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -59,6 +71,9 @@ pub fn read(html: &str) -> Card {
     let has_og_image = RefCell::new(false);
     let images = RefCell::new(Vec::<String>::new());
     let furniture = RefCell::new(Vec::<String>::new());
+    let kind = RefCell::new(String::new());
+    let structured = RefCell::new(Vec::<serde_json::Value>::new());
+    let script = RefCell::new(String::new());
 
     let mut rewriter = lol_html::HtmlRewriter::new(
         lol_html::Settings::new()
@@ -80,6 +95,7 @@ pub fn read(html: &str) -> Card {
                         *description.borrow_mut() = value
                     }
                     "og:site_name" if site.borrow().is_empty() => *site.borrow_mut() = value,
+                    "og:type" if kind.borrow().is_empty() => *kind.borrow_mut() = value,
                     _ => {}
                 }
                 Ok(())
@@ -101,7 +117,22 @@ pub fn read(html: &str) -> Card {
                     images.borrow_mut().push(src);
                 }
                 Ok(())
-            })),
+            }))
+            .append_element_content_handler(lol_html::text!(
+                "script[type='application/ld+json']",
+                |t| {
+                    script.borrow_mut().push_str(t.as_str());
+                    if t.last_in_text_node() {
+                        let whole = std::mem::take(&mut *script.borrow_mut());
+                        if let Ok(value) = serde_json::from_str::<serde_json::Value>(whole.trim())
+                            && structured.borrow().len() < 8
+                        {
+                            structured.borrow_mut().push(value);
+                        }
+                    }
+                    Ok(())
+                }
+            )),
         |_: &[u8]| {},
     );
     // end() consumes the rewriter, which is what releases the handlers'
@@ -115,6 +146,8 @@ pub fn read(html: &str) -> Card {
             site: String::new(),
             has_og_image: false,
             image: None,
+            kind: String::new(),
+            structured: Vec::new(),
         };
     }
 
@@ -129,6 +162,8 @@ pub fn read(html: &str) -> Card {
         site: site.borrow().trim().to_string(),
         has_og_image: *has_og_image.borrow(),
         image: None,
+        kind: kind.borrow().trim().to_string(),
+        structured: structured.borrow().clone(),
     }
     .with_images(images.borrow().clone(), &furniture.borrow())
 }
@@ -235,6 +270,20 @@ mod tests {
         assert_eq!(card.description, "Tok tutan bir ekmek.");
         assert_eq!(card.site, "Bir Mutfak");
         assert!(!card.has_og_image);
+    }
+
+    #[test]
+    fn what_a_developer_wrote_for_machines_is_carried_through() {
+        let html = r#"<html><head><title>Kraft Çanta</title>
+            <meta property="og:type" content="product">
+            <script type="application/ld+json">
+            {"@context":"https://schema.org","@type":"Product","name":"Kraft Çanta",
+             "offers":{"@type":"Offer","price":"12.50","priceCurrency":"TRY"}}
+            </script></head><body></body></html>"#;
+        let card = read(html);
+        assert_eq!(card.kind, "product");
+        assert_eq!(card.structured.len(), 1);
+        assert_eq!(card.structured[0]["offers"]["price"], "12.50");
     }
 
     #[test]
