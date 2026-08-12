@@ -24,6 +24,9 @@ function runKadraj(dir, options = {}) {
   const args = [dir]
   if (options.quality !== undefined) args.push("--quality", String(options.quality))
   if (options.widths !== undefined) args.push("--widths", options.widths.join(","))
+  if (options.ogManifest) args.push("--og-manifest", options.ogManifest)
+  if (options.siteUrl) args.push("--site-url", options.siteUrl)
+  if (options.og) args.push("--og-write")
   const r = spawnSync(bin, args, { stdio: "inherit" })
   if (r.error && r.error.code === "ENOENT")
     throw new Error(

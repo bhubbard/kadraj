@@ -120,13 +120,26 @@ fn main() -> Result<()> {
         .map(|e| e.into_path())
         .collect();
 
-    // Pass 1: every local raster image the pages reference — except ones a
-    // <picture> already feeds or that carry their own srcset; those pages
-    // made their own arrangements and kadraj leaves them alone.
-    let mut wanted: Vec<PathBuf> = htmls
+    // Pass 1: read every page once and take everything from it. The
+    // pictures it wants derived — except ones a <picture> already feeds or
+    // that carry their own srcset, where the page made its own
+    // arrangements — and, when asked, what a sharing card would need.
+    let wants_cards = opt.og_manifest.is_some() || opt.og_write;
+    let surveyed: Vec<(Vec<PathBuf>, Option<og::Card>)> = htmls
         .par_iter()
-        .map(|h| collect_imgs(h, &opt.root).unwrap_or_default())
-        .flatten()
+        .map(|page| {
+            let Ok(html) = std::fs::read_to_string(page) else {
+                return (Vec::new(), None);
+            };
+            let images = collect_imgs(&html, page, &opt.root).unwrap_or_default();
+            let card = wants_cards.then(|| og::read(&html));
+            (images, card)
+        })
+        .collect();
+
+    let mut wanted: Vec<PathBuf> = surveyed
+        .iter()
+        .flat_map(|(images, _)| images.iter().cloned())
         .collect();
     wanted.sort();
     wanted.dedup();
@@ -155,19 +168,15 @@ fn main() -> Result<()> {
         })
         .sum();
 
-    if opt.og_manifest.is_some() || opt.og_write {
-        match write_cards(&htmls, &opt, &derived) {
-            Ok(cards) => {
-                if let Some(path) = &opt.og_manifest {
-                    std::fs::write(path, serde_json::to_string_pretty(&cards)?)?;
-                }
-                println!("{} pages described for sharing", cards.len());
-                if opt.og_write {
-                    let given = give_sharing_images(&cards, &opt)?;
-                    println!("{given} pages given a sharing image");
-                }
-            }
-            Err(e) => eprintln!("the sharing manifest was not written: {e}"),
+    if wants_cards {
+        let cards = decide_cards(&htmls, surveyed, &opt, &derived);
+        if let Some(path) = &opt.og_manifest {
+            std::fs::write(path, serde_json::to_string_pretty(&cards)?)?;
+        }
+        println!("{} pages described for sharing", cards.len());
+        if opt.og_write {
+            let given = give_sharing_images(&cards, &opt)?;
+            println!("{given} pages given a sharing image");
         }
     }
 
@@ -182,20 +191,21 @@ fn main() -> Result<()> {
 
 /// What every page would need on a sharing card, in the order the pages
 /// were found — shallow first, so a truncated list keeps the front pages.
-fn write_cards(
+///
+/// Nothing is read here: pass 1 already has every page's facts. What is
+/// left is the decision that needs the whole site at once — a picture on
+/// most pages is the template's, not the page's.
+fn decide_cards(
     htmls: &[PathBuf],
+    surveyed: Vec<(Vec<PathBuf>, Option<og::Card>)>,
     opt: &Options,
     derived: &HashMap<PathBuf, Derived>,
-) -> Result<Vec<og::Card>> {
-    // First read every page, then decide. A picture that appears on most
-    // pages of a site is the template's — a logo, a payment strip, an
-    // author portrait — and it is nobody's sharing card.
+) -> Vec<og::Card> {
     let mut read: Vec<(PathBuf, og::Card)> = htmls
-        .par_iter()
-        .filter_map(|page| {
-            let html = std::fs::read_to_string(page).ok()?;
-            Some((page.clone(), og::read(&html)))
-        })
+        .iter()
+        .cloned()
+        .zip(surveyed)
+        .filter_map(|(page, (_, card))| card.map(|card| (page, card)))
         .collect();
 
     let mut seen: HashMap<String, usize> = HashMap::new();
@@ -232,7 +242,7 @@ fn write_cards(
     cards.sort_by(|a, b| {
         (a.path.matches('/').count(), &a.path).cmp(&(b.path.matches('/').count(), &b.path))
     });
-    Ok(cards)
+    cards
 }
 
 /// Writes og:image (and twitter:image) into the pages that named none.
@@ -327,8 +337,7 @@ pub(crate) fn resolve(src: &str, page: &Path, root: &Path) -> Option<PathBuf> {
 }
 
 /// The images this page wants derived: local rasters from plain <img> tags.
-fn collect_imgs(page: &Path, root: &Path) -> Result<Vec<PathBuf>> {
-    let html = std::fs::read_to_string(page)?;
+fn collect_imgs(html: &str, page: &Path, root: &Path) -> Result<Vec<PathBuf>> {
     let found = Mutex::new(Vec::new());
     let skip = Mutex::new(HashSet::new());
     let mut rewriter = lol_html::HtmlRewriter::new(
@@ -522,7 +531,9 @@ mod tests {
             og_write: false,
             site_url: None,
         };
-        let wanted = collect_imgs(&root.join("index.html"), &root).unwrap();
+        let page = root.join("index.html");
+        let html = std::fs::read_to_string(&page).unwrap();
+        let wanted = collect_imgs(&html, &page, &root).unwrap();
         assert_eq!(wanted.len(), 1, "the picture-fed img must not be collected");
 
         let n = AtomicU64::new(0);

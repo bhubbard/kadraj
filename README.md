@@ -103,8 +103,15 @@ option).
 ```js
 // astro.config.mjs
 import kadraj from "astro-kadraj"
-export default { integrations: [kadraj({ quality: 50 })] }
+export default {
+  site: "https://example.com",
+  integrations: [kadraj({ quality: 50, og: true })],
+}
 ```
+
+`og: true` gives sharing images to the pages that name none; the site's
+address comes from Astro's own `site`, so the two cannot disagree. Add
+`ogManifest: "og.json"` to also write the manifest.
 
 ```js
 // vite.config.js
