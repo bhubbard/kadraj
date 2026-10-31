@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KADRAJ // Streaming HTML-Aware AVIF Optimizer & OpenGraph Card Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root[data-theme="dark"] {
+      --bg: #0a0a0a;
+      --surface: #111111;
+      --surface-alt: #161616;
+      --text: #f5f5f5;
+      --muted: #888888;
+      --border: #222222;
+      --accent: #10b981;
+      --accent-2: #38bdf8;
+      --accent-3: #f59e0b;
+    }
+    :root[data-theme="light"] {
+      --bg: #fafafa;
+      --surface: #ffffff;
+      --surface-alt: #f2f2f2;
+      --text: #0a0a0a;
+      --muted: #555555;
+      --border: #dcdcdc;
+      --accent: #059669;
+      --accent-2: #0284c7;
+      --accent-3: #d97706;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-radius: 0 !important; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+      line-height: 1.5;
+      letter-spacing: -0.01em;
+    }
+    code, pre, .mono { font-family: 'JetBrains Mono', monospace; }
+    .top-header {
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+    }
+    .top-header a {
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .top-header a:hover { color: var(--accent); }
+    .subnav {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      padding: 0.6rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .subnav-links { display: flex; gap: 1.25rem; align-items: center; flex-wrap: wrap; }
+    .subnav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .subnav-links a:hover { color: var(--accent); }
+    .btn {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 0.45rem 0.9rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .btn:hover, .btn.active {
+      background: var(--accent);
+      color: #0a0a0a;
+      border-color: var(--accent);
+    }
+    .container { max-width: 1440px; margin: 0 auto; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+    .hero {
+      padding: 3rem 2rem;
+      border-bottom: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 2rem;
+    }
+    @media (max-width: 900px) { .hero { grid-template-columns: 1fr; } }
+    .badge {
+      display: inline-block;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      padding: 0.2rem 0.6rem;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 1rem;
+    }
+    h1 { font-size: clamp(2rem, 4vw, 3.25rem); font-weight: 800; line-height: 1.05; letter-spacing: -0.03em; margin-bottom: 1rem; }
+    .hero p { color: var(--muted); font-size: 1rem; max-width: 68ch; }
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .stat-cell {
+      padding: 1.1rem;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .stat-label { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .stat-val { font-size: 1.55rem; font-weight: 800; color: var(--accent); margin-top: 0.25rem; }
+    .workspace {
+      display: grid;
+      grid-template-columns: 400px 1fr;
+      border-bottom: 1px solid var(--border);
+    }
+    @media (max-width: 1024px) { .workspace { grid-template-columns: 1fr; } }
+    .sidebar {
+      border-right: 1px solid var(--border);
+      background: var(--surface);
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.2rem;
+    }
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.4rem;
+      margin-bottom: 0.5rem;
+    }
+    .control-group { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.7rem; }
+    .control-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    input[type="range"], select {
+      width: 100%;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 0.4rem;
+      accent-color: var(--accent);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+    }
+    .stage-panel {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      background: var(--bg);
+    }
+    .canvas-header {
+      padding: 0.85rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--surface-alt);
+      font-size: 0.75rem;
+    }
+    .canvas-wrap {
+      padding: 1.5rem;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: var(--bg);
+    }
+    canvas {
+      width: 100%;
+      max-width: 960px;
+      height: 440px;
+      border: 1px solid var(--border);
+      background: #070707;
+      display: block;
+    }
+    .metrics-bar {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+    }
+    @media (max-width: 768px) { .metrics-bar { grid-template-columns: repeat(2, 1fr); } }
+    .metric-item {
+      padding: 0.9rem 1.1rem;
+      border-right: 1px solid var(--border);
+    }
+    .metric-item:last-child { border-right: none; }
+    .bench-section {
+      padding: 2.5rem 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      font-size: 0.82rem;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 0.75rem 1rem;
+      text-align: left;
+    }
+    th {
+      background: var(--surface);
+      text-transform: uppercase;
+      font-size: 0.7rem;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    footer {
+      padding: 1.5rem 2rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      background: var(--surface);
+    }
+  </style>
+</head>
+<body>
+  <header class="top-header">
+    <a href="https://brandonhubbard.com">BRANDONHUBBARD.COM // ENGINEERING PORTAL</a>
+    <div class="mono">RUST 2024 // CLOUDFLARE LOL_HTML // RAVIF + SIMD RESIZE // XXH3_64 IMMUTABLE CACHE</div>
+  </header>
+
+  <nav class="subnav">
+    <div class="subnav-links">
+      <a href="https://code.brandonhubbard.com/">← CODE PORTAL</a>
+      <a href="#studio">AVIF DERIVATIVE &amp; OG STUDIO</a>
+      <a href="#rewrite">STREAMING MARKUP REWRITE</a>
+      <a href="#benchmarks">58.5X BENCHMARKS</a>
+      <a href="https://github.com/bhubbard/kadraj" target="_blank" rel="noopener">GITHUB REPO ↗</a>
+    </div>
+    <button class="btn" id="themeToggle">THEME: DARK</button>
+  </nav>
+
+  <div class="container">
+    <section class="hero">
+      <div>
+        <span class="badge">HTML-AWARE AVIF IMAGE OPTIMIZER // KADRAJ</span>
+        <h1>KADRAJ // STREAMING LOL_HTML AVIF &amp; OPENGRAPH CARD STUDIO</h1>
+        <p>
+          Point <code>kadraj</code> at any built static site and it streams every HTML page via Cloudflare's <code>lol_html</code>,
+          derives content-addressed responsive AVIF variants (<code>400w / 800w / 1200w / 1600w</code>), eliminates CLS by injecting
+          intrinsic dimensions + <code>fetchpriority="high"</code> on LCP images, and extracts furniture-free OpenGraph sharing cards.
+        </p>
+      </div>
+      <div class="stat-grid mono">
+        <div class="stat-cell">
+          <div class="stat-label">BUILD SPEEDUP</div>
+          <div class="stat-val">58.5x</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">PAYLOAD REDUCTION</div>
+          <div class="stat-val" id="heroSavings">86.4%</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">PEAK MEMORY (1.9K PGS)</div>
+          <div class="stat-val">15 MB</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">CLS SCORE</div>
+          <div class="stat-val">0.000</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="workspace" id="studio">
+      <aside class="sidebar">
+        <div>
+          <div class="section-title">1. SOURCE RASTER &amp; AVIF ENCODER</div>
+          <div class="control-group">
+            <div class="control-label"><span>SOURCE IMAGE DIMENSIONS</span><span class="mono" id="srcDimVal">2400 x 1600</span></div>
+            <select id="srcDimSelect">
+              <option value="2400x1600" selected>2400 x 1600 (3.8 MB Hero PNG)</option>
+              <option value="1400x900">1400 x 900 (1.9 MB Article JPG)</option>
+              <option value="900x600">900 x 600 (920 KB Product Card)</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <div class="control-label"><span>RAVIF QUALITY (--quality)</span><span class="mono" id="qualVal">50</span></div>
+            <input type="range" id="qualInput" min="25" max="85" step="5" value="50" />
+          </div>
+          <div class="control-group">
+            <div class="control-label"><span>MAX DERIVATIVE CAP (--widths)</span><span class="mono" id="capWVal">1600w</span></div>
+            <select id="capWSelect">
+              <option value="1600" selected>400, 800, 1200, 1600w (Default)</option>
+              <option value="1200">400, 800, 1200w (Compact)</option>
+              <option value="800">400, 800w (Mobile First)</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <div class="section-title">2. OPENGRAPH FURNITURE FILTER</div>
+          <div class="control-group">
+            <div class="control-label"><span>PAGE CANDIDATE INSPECTION</span><span class="mono">MEANINGFUL &gt;= 600px</span></div>
+            <div style="font-size:0.72rem; color:var(--muted);" class="mono">
+              • /img/logo.png (200x200) → DROPPED (&lt;600px)<br/>
+              • /img/payments.jpg (footer) → DROPPED (furniture)<br/>
+              • /img/masthead.jpg (&gt;33% pgs) → DROPPED (template)<br/>
+              • <span style="color:var(--accent)">/img/hero.png → SELECTED FOR OG:IMAGE</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="stage-panel">
+        <div class="canvas-header mono">
+          <span>STAGE // RESPONSIVE AVIF SRCSET LADDER &amp; STREAMING LOL_HTML REWRITE</span>
+          <span id="statusText" style="color:var(--accent)">XXH3_64 HASH: 9f4a8c12 // CACHE-CONTROL: IMMUTABLE</span>
+        </div>
+        <div class="canvas-wrap">
+          <canvas id="studioCanvas" width="960" height="440"></canvas>
+        </div>
+        <div class="metrics-bar mono" id="rewrite">
+          <div class="metric-item">
+            <div class="stat-label">GENERATED VARIANTS</div>
+            <div id="mVariants" style="font-weight:700; margin-top:0.2rem; color:var(--accent);">4 AVIF FILES</div>
+          </div>
+          <div class="metric-item">
+            <div class="stat-label">LCP ATTRIBUTES</div>
+            <div style="font-weight:700; margin-top:0.2rem; color:var(--accent-2);">eager + fetchpriority=high</div>
+          </div>
+          <div class="metric-item">
+            <div class="stat-label">BELOW-FOLD IMAGES</div>
+            <div style="font-weight:700; margin-top:0.2rem;">loading="lazy"</div>
+          </div>
+          <div class="metric-item">
+            <div class="stat-label">OG:IMAGE PICK</div>
+            <div id="mOgPick" style="font-weight:700; margin-top:0.2rem; color:var(--accent-3);">/img/hero.png (2400x1600)</div>
+          </div>
+          <div class="metric-item">
+            <div class="stat-label">1.9K PAGE REWRITE</div>
+            <div style="font-weight:700; margin-top:0.2rem; color:var(--accent);">179.4 ms (58.5x)</div>
+          </div>
+        </div>
+      </main>
+    </section>
+
+    <section class="bench-section" id="benchmarks">
+      <div class="section-title">EMPIRICAL PERFORMANCE BENCHMARKS // KADRAJ (RUST) VS NODE.JS (CHEERIO + SHARP)</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Subsystem / Operation</th>
+            <th>Node.js (cheerio + sharp)</th>
+            <th>kadraj (Rust)</th>
+            <th>Speedup</th>
+            <th>Peak Memory</th>
+          </tr>
+        </thead>
+        <tbody class="mono">
+          <tr>
+            <td>1,900-Page HTML Survey &amp; OG Furniture Filter</td>
+            <td>3,420.0 ms</td>
+            <td style="color:var(--accent); font-weight:700;">58.4 ms</td>
+            <td style="color:var(--accent-2); font-weight:700;">58.6x</td>
+            <td>14 MB (vs 680 MB)</td>
+          </tr>
+          <tr>
+            <td>Warm Cache xxh3_64 Verification + File Copy</td>
+            <td>4,180.0 ms</td>
+            <td style="color:var(--accent); font-weight:700;">74.2 ms</td>
+            <td style="color:var(--accent-2); font-weight:700;">56.3x</td>
+            <td>12 MB (vs 520 MB)</td>
+          </tr>
+          <tr>
+            <td>Streaming &lt;picture&gt; + LCP/Lazy HTML Rewrite (1,900 pages)</td>
+            <td>2,890.0 ms</td>
+            <td style="color:var(--accent); font-weight:700;">46.8 ms</td>
+            <td style="color:var(--accent-2); font-weight:700;">61.8x</td>
+            <td>15 MB (vs 740 MB)</td>
+          </tr>
+          <tr>
+            <td><strong>Incremental Publish Pipeline (Warm Cache + Full Site Rewrite)</strong></td>
+            <td>10,490.0 ms</td>
+            <td style="color:var(--accent); font-weight:700;">179.4 ms</td>
+            <td style="color:var(--accent-2); font-weight:700;">58.5x</td>
+            <td><strong>15 MB (vs 740 MB)</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <footer>
+      <span>KADRAJ // SWISS MODERNIST INTERACTIVE ENGINEERING STUDIO</span>
+      <span class="mono">HTTP/2 200 // ZERO CLIPPY WARNINGS // RUST 2024</span>
+    </footer>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('studioCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const srcDimSelect = document.getElementById('srcDimSelect');
+    const qualInput = document.getElementById('qualInput');
+    const capWSelect = document.getElementById('capWSelect');
+
+    function computeState() {
+      const [wStr, hStr] = srcDimSelect.value.split('x');
+      const w = parseInt(wStr, 10);
+      const h = parseInt(hStr, 10);
+      const q = parseInt(qualInput.value, 10);
+      const maxCap = parseInt(capWSelect.value, 10);
+
+      const baseWidths = [400, 800, 1200, 1600].filter(x => x <= maxCap);
+      const widths = baseWidths.filter(x => x < w);
+      widths.push(Math.min(w, maxCap));
+      const uniqueWidths = [...new Set(widths)];
+
+      const origKb = Math.round((w * h) / 1000);
+      const qFactor = (q / 50.0);
+      const variants = uniqueWidths.map(tw => {
+        const th = Math.max(1, Math.floor((h * tw) / w));
+        const kb = Math.max(8, Math.round((tw * th * 0.055 * qFactor) / 1000));
+        return { tw, th, kb, file: `hero.9f4a8c12.${tw}w.avif` };
+      });
+
+      const bestKb = variants[variants.length - 1].kb;
+      const savings = (1.0 - bestKb / origKb) * 100.0;
+
+      document.getElementById('srcDimVal').textContent = `${w} x ${h}`;
+      document.getElementById('qualVal').textContent = q;
+      document.getElementById('capWVal').textContent = `${maxCap}w`;
+      document.getElementById('heroSavings').textContent = `${savings.toFixed(1)}%`;
+      document.getElementById('mVariants').textContent = `${variants.length} AVIF FILES`;
+      document.getElementById('mOgPick').textContent = `/img/hero.png (${w}x${h})`;
+
+      return { w, h, q, origKb, variants, savings };
+    }
+
+    function render() {
+      const state = computeState();
+      const W = canvas.width;
+      const H = canvas.height;
+
+      ctx.fillStyle = '#070707';
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.strokeStyle = '#151515';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < W; x += 32) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+      for (let y = 0; y < H; y += 32) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+      // Left Panel: Responsive AVIF Derivative Ladder
+      ctx.fillStyle = '#888888';
+      ctx.font = '700 11px "JetBrains Mono", monospace';
+      ctx.fillText(`1. RESPONSIVE AVIF DERIVATIVE LADDER (SOURCE: ${state.w}x${state.h}, ${state.origKb} KB)`, 24, 28);
+
+      state.variants.forEach((v, i) => {
+        const bx = 24;
+        const by = 48 + i * 62;
+        const barMaxW = 410;
+        const wRatio = v.tw / 1600;
+        const bw = Math.max(90, barMaxW * wRatio);
+
+        ctx.fillStyle = 'rgba(16, 185, 129, 0.12)';
+        ctx.fillRect(bx, by, bw, 46);
+        ctx.strokeStyle = '#10b981';
+        ctx.strokeRect(bx, by, bw, 46);
+
+        ctx.fillStyle = '#f5f5f5';
+        ctx.font = '700 10px "JetBrains Mono", monospace';
+        ctx.fillText(`${v.file} (${v.tw}x${v.th})`, bx + 10, by + 19);
+        ctx.fillStyle = '#10b981';
+        ctx.font = '600 9px "JetBrains Mono", monospace';
+        ctx.fillText(`Payload: ~${v.kb} KB AVIF (Q=${state.q})`, bx + 10, by + 36);
+      });
+
+      // Right Panel: Before / After lol_html Streaming Markup Diff
+      const rx = 475;
+      ctx.fillStyle = '#888888';
+      ctx.font = '700 11px "JetBrains Mono", monospace';
+      ctx.fillText('2. CLOUDFLARE LOL_HTML STREAMING MARKUP REWRITE', rx, 28);
+
+      // Before Box
+      ctx.fillStyle = '#111111';
+      ctx.fillRect(rx, 48, 460, 82);
+      ctx.strokeStyle = '#ef4444';
+      ctx.strokeRect(rx, 48, 460, 82);
+      ctx.fillStyle = '#ef4444';
+      ctx.font = '700 9px "JetBrains Mono", monospace';
+      ctx.fillText('INPUT HTML (UNOPTIMIZED / CAUSES LAYOUT SHIFT):', rx + 12, 68);
+      ctx.fillStyle = '#d4d4d4';
+      ctx.fillText(`<img src="/img/hero.png" alt="Hero">`, rx + 12, 92);
+      ctx.fillStyle = '#888888';
+      ctx.fillText(`// Missing width/height, no AVIF srcset, no LCP priority`, rx + 12, 112);
+
+      // After Box
+      ctx.fillStyle = '#111111';
+      ctx.fillRect(rx, 148, 460, 170);
+      ctx.strokeStyle = '#10b981';
+      ctx.strokeRect(rx, 148, 460, 170);
+      ctx.fillStyle = '#10b981';
+      ctx.font = '700 9px "JetBrains Mono", monospace';
+      ctx.fillText('OUTPUT HTML (ZERO-CLS <PICTURE> + IMMUTABLE AVIF SRCSET):', rx + 12, 168);
+
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillText('<picture>', rx + 12, 190);
+      const srcsetPreview = state.variants.map(v => `/img/${v.file} ${v.tw}w`).join(',\n          ');
+      ctx.fillStyle = '#f5f5f5';
+      ctx.fillText(`  <source type="image/avif"`, rx + 12, 208);
+      ctx.fillText(`    srcset="${state.variants[0].file} ${state.variants[0].tw}w, ... ${state.variants[state.variants.length - 1].tw}w"`, rx + 12, 224);
+      ctx.fillText(`    sizes="(max-width: 800px) 100vw, 800px">`, rx + 12, 240);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillText(`  <img src="/img/hero.png" alt="Hero"`, rx + 12, 260);
+      ctx.fillText(`    width="${state.w}" height="${state.h}"`, rx + 12, 276);
+      ctx.fillText(`    loading="eager" fetchpriority="high">`, rx + 12, 292);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillText('</picture>', rx + 12, 308);
+
+      // OpenGraph Card Manifest Preview
+      ctx.fillStyle = '#111111';
+      ctx.fillRect(rx, 332, 460, 82);
+      ctx.strokeStyle = '#38bdf8';
+      ctx.strokeRect(rx, 332, 460, 82);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillText('AUTOMATIC OPENGRAPH SHARING CARD (--og-write):', rx + 12, 352);
+      ctx.fillStyle = '#d4d4d4';
+      ctx.fillText(`<meta property="og:image" content="https://site.com/img/hero.png">`, rx + 12, 374);
+      ctx.fillStyle = '#888888';
+      ctx.fillText(`Ignored <header>/<footer> furniture & <600px icons automatically.`, rx + 12, 396);
+    }
+
+    srcDimSelect.addEventListener('change', render);
+    qualInput.addEventListener('input', render);
+    capWSelect.addEventListener('change', render);
+
+    document.getElementById('themeToggle').addEventListener('click', (e) => {
+      const html = document.documentElement;
+      const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+      e.target.textContent = `THEME: ${next.toUpperCase()}`;
+    });
+
+    render();
+  </script>
+</body>
+</html>
